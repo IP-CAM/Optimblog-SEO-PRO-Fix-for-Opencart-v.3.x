@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+<name>Исправление OptimBlog для работы с модулем SEO_PRO</name>
+<code>optimblog_seopro_fix</code>
+<version>1.0</version>
+<date>26.02.2023</date>
+<author>Aleksandr Panin</author>
+<link>https://aleksandrpanin.ru/</link>
+
+
+
+
+<file path="catalog/controller/startup/seo_pro.php">
+
+	<operation error="skip">
+		<search><![CDATA[
+				$this->request->get['route'] = 'information/information';
+      ]]></search>
+		<add position="replace"><![CDATA[]]></add>
+	</operation>
+
+	<operation error="skip">
+		<search><![CDATA[
+			} elseif (isset($this->request->get['information_id'])) {
+      ]]></search>
+		<add position="replace"><![CDATA[]]></add>
+	</operation>
+
+	<operation error="skip">
+		<search><![CDATA[
+      } elseif (isset($this->request->get['path'])) {
+      ]]></search>
+		<add position="before"><![CDATA[
+      } elseif (isset($this->request->get['information_id'])) {
+      	$this->request->get['route'] = 'information/information';
+      	if (!isset($this->request->get['path'])) {
+      		$path = $this->getPathByArticles($this->request->get['information_id']);
+      		if ($path) $this->request->get['path'] = $path;
+      	}
+		]]></add>
+	</operation>
+
+
+	<operation error="skip">
+		<search><![CDATA[
+      $this->request->get['route'] = 'product/category';
+      ]]></search>
+		<add position="replace"><![CDATA[
+        $catType = null;
+        $tempParts = explode("_", $this->request->get['path']);
+        $curCatId = array_pop($tempParts);
+        if(is_array($tempParts) && $curCatId){
+        	$catType = $this->getCategoryType($curCatId);
+        }
+
+        if($catType == null || $catType == "product")
+        	$this->request->get['route'] = 'product/category';
+        elseif($catType == "article")
+        	$this->request->get['route'] = 'extension/information/category';
+		]]></add>
+	</operation>
+
+
+	<operation error="skip">
+		<search><![CDATA[
+	private function getPathByCategory($category_id) {
+      ]]></search>
+		<add position="before"><![CDATA[
+private function getPathByArticles($information_id) {
+	$information_id = (int)$information_id;
+	if ($information_id < 1) return false;
+
+	static $path = null;
+	if (!isset($path)) {
+		$path = $this->cache->get('information.seopath');
+		if (!isset($path)) $path = array();
+	}
+
+	if (!isset($path[$information_id])) {
+		$query = $this->db->query("SELECT category_id FROM " . DB_PREFIX . "information_to_category WHERE information_id = '" . $information_id . "' ORDER BY main_category DESC LIMIT 1");
+
+		$path[$information_id] = $this->getPathByCategory($query->num_rows ? (int)$query->row['category_id'] : 0);
+
+		$this->cache->set('information.seopath', $path);
+	}
+
+	return $path[$information_id];
+}
+
+private function getCategoryType($category_id) {
+	$category_id = (int)$category_id;
+	if ($category_id < 1) return false;
+
+	static $catType = null;
+	if (!$catType) {
+		$catType = $this->cache->get('category_'.$category_id.'.type');
+	}
+
+	if (!$catType) {
+		$query = $this->db->query("SELECT information FROM " . DB_PREFIX . "category WHERE category_id = '" . $category_id . "' ORDER BY sort_order ASC LIMIT 1");
+		$catTypeTemp = $query->num_rows ? (int)$query->row['information'] : 0;
+
+		if($catTypeTemp)
+			$catType = "article";
+		else
+			$catType = "product";
+
+		$this->cache->set('category_'.$category_id.'.type', $catType);
+	}
+
+	return $catType;
+}
+
+		]]></add>
+	</operation>
+
+	<operation error="skip">
+		<search><![CDATA[
+			case 'information/information/info':
+      ]]></search>
+		<add position="before"><![CDATA[
+			case 'information/information':
+				if (isset($data['information_id'])) {
+					$explode = explode('/',$data['information_id']);
+					if (!empty($explode)) $data['information_id'] = $explode[0];
+					$tmp = $data;
+					$data = array();
+					if ($this->config->get('config_seo_url_include_path')) {
+						$data['path'] = $this->getPathByArticles($tmp['information_id']);
+						if (!$data['path']) return $link;
+					}
+					$data['information_id'] = $tmp['information_id'];
+					$allowed_parameters = array(
+						'information_id', 'tracking',
+						'uri', 'list_type',
+						'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+						'type', 'source', 'block', 'position', 'keyword',
+						'yclid', 'ymclid', 'openstat', 'frommarket',
+						'openstat_service', 'openstat_campaign', 'openstat_ad', 'openstat_source'
+						);
+					foreach($allowed_parameters as $ap) {
+						if (isset($tmp[$ap])) {
+							$data[$ap] = $tmp[$ap];
+						}
+					}
+				}
+				break;
+		]]></add>
+	</operation>
+
+</file>
+
+
+</modification>
